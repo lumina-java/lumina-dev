@@ -78,18 +78,25 @@ impl QueueWorker {
         // Cek apakah tabel `jobs` ada sebelum mulai polling.
         // Jika belum ada, log warning SEKALI dan hentikan worker.
         let db = &state.db().pool;
-        let table_exists = sqlx::query("SELECT 1 FROM jobs LIMIT 1")
-            .execute(db)
-            .await;
-        
-        if let Err(e) = table_exists {
-            let err_str = e.to_string();
-            if err_str.contains("doesn't exist") || err_str.contains("no such table") {
-                tracing::warn!(
-                    "⚠️  Tabel 'jobs' belum ada. Queue worker dinonaktifkan. \
-                     Jalankan: ./lumina migrate untuk membuat tabel."
-                );
-                return; // Hentikan worker, tidak perlu loop
+        loop {
+            let table_exists = sqlx::query("SELECT 1 FROM jobs LIMIT 1")
+                .execute(db)
+                .await;
+            
+            if let Err(e) = table_exists {
+                let err_str = e.to_string();
+                if err_str.contains("doesn't exist") || err_str.contains("no such table") {
+                    tracing::warn!(
+                        "⚠️  Tabel 'jobs' belum ada. Menunggu migrasi... (retry dalam 30 detik)"
+                    );
+                    sleep(Duration::from_secs(30)).await;
+                } else {
+                    // Jika error lain (misal koneksi terputus), tetap tunggu dan coba lagi
+                    tracing::error!("❌ Error saat mengecek tabel jobs: {}. Retry dalam 30 detik...", e);
+                    sleep(Duration::from_secs(30)).await;
+                }
+            } else {
+                break; // Tabel sudah ada, lanjut ke polling loop
             }
         }
         
