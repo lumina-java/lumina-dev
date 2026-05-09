@@ -151,13 +151,13 @@ impl ViewEngine {
         let re_include = Regex::new(r#"@include\s*\(\s*['"](.*?)['"]\s*\)"#).unwrap();
         processed = re_include.replace_all(&processed, "{% include \"$1.blade.rs\" %}").to_string();
 
-        // 14. @auth -> {% if email != "" %}
-        processed = processed.replace("@auth", "{% if email != \"\" %}");
+        // 14. @auth -> {% if is_authenticated %}
+        processed = processed.replace("@auth", "{% if is_authenticated %}");
         // 15. @endauth -> {% endif %}
         processed = processed.replace("@endauth", "{% endif %}");
         
-        // 16. @guest -> {% if email == "" %}
-        processed = processed.replace("@guest", "{% if email == \"\" %}");
+        // 16. @guest -> {% if not is_authenticated %}
+        processed = processed.replace("@guest", "{% if not is_authenticated %}");
         // 17. @endguest -> {% endif %}
         processed = processed.replace("@endguest", "{% endif %}");
 
@@ -188,7 +188,12 @@ impl ViewEngine {
         session: &tower_sessions::Session
     ) -> String {
         // 0. Inject User Info if logged in
-        if let Ok(Some(user)) = session.get::<crate::core::auth::AuthUser>("user").await {
+        let user_opt = session.get::<crate::core::auth::AuthUser>("user").await.unwrap_or_default();
+        let is_authenticated = user_opt.is_some();
+
+        context.insert("is_authenticated", &is_authenticated);
+
+        if let Some(user) = user_opt {
             context.insert("email", &user.email);
             context.insert("user_id", &user.sub);
             context.insert("role", &user.role);

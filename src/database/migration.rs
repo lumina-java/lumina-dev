@@ -66,8 +66,15 @@ pub async fn run_migrations(pool: &Pool<Any>, kind: DatabaseKind) -> Result<(), 
             continue;
         }
 
-        let mut sql = fs::read_to_string(entry.path())
+        let sql_content = fs::read_to_string(entry.path())
             .expect(&format!("Gagal baca file: {}", name));
+
+        let mut sql = if sql_content.contains("-- @up") {
+            let parts: Vec<&str> = sql_content.split("-- @down").collect();
+            parts[0].replace("-- @up", "").to_string()
+        } else {
+            sql_content
+        };
 
         // Auto-fix syntax untuk multi-database compatibility
         match kind {
@@ -220,16 +227,29 @@ pub async fn migrate_rollback(pool: &Pool<Any>) -> Result<(), sqlx::Error> {
         return Ok(());
     }
 
-    let sql = fs::read_to_string(file_path).expect("Gagal baca file migrasi");
+    let sql_content = fs::read_to_string(file_path).expect("Gagal baca file migrasi");
 
-    let re_create = Regex::new(r"(?i)CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-zA-Z0-9_]+)").unwrap();
-    if let Some(caps) = re_create.captures(&sql) {
-        let table_name = &caps[1];
-        let drop_sql = format!("DROP TABLE IF EXISTS {}", table_name);
-        println!("💥 Menghapus tabel: {}", table_name);
-        sqlx::query(&drop_sql).execute(pool).await?;
+    if sql_content.contains("-- @down") {
+        let parts: Vec<&str> = sql_content.split("-- @down").collect();
+        let rollback_sql = parts[1].trim();
+        
+        // Eksekusi setiap statement SQL di bagian @down
+        let statements: Vec<&str> = rollback_sql.split(';').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+        for stmt in statements {
+            println!("🔥 Executing: {}", stmt);
+            sqlx::query(stmt).execute(pool).await?;
+        }
     } else {
-        println!("⚠️  Gagal mengekstrak nama tabel dari file migrasi.");
+        // Fallback ke Regex: Cari CREATE TABLE untuk tebak nama tabel yang harus di-DROP
+        let re_create = Regex::new(r"(?i)CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-zA-Z0-9_]+)").unwrap();
+        if let Some(caps) = re_create.captures(&sql_content) {
+            let table_name = &caps[1];
+            let drop_sql = format!("DROP TABLE IF EXISTS {}", table_name);
+            println!("💥 Menghapus tabel (auto-detect): {}", table_name);
+            sqlx::query(&drop_sql).execute(pool).await?;
+        } else {
+            println!("⚠️  Gagal mengekstrak nama tabel dan tidak ada section -- @down.");
+        }
     }
 
     sqlx::query("DELETE FROM _migrations WHERE name = ?")

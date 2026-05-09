@@ -68,7 +68,8 @@ where
         })?.0;
         
         value.validate().map_err(|e| {
-             crate::core::error::AppError::ValidationError(format!("{}", e))
+             let errors = e.to_map();
+             crate::core::error::AppError::ValidationError(serde_json::to_string(&errors).unwrap_or_default())
         })?;
         
         Ok(ValidatedJson(value))
