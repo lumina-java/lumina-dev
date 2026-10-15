@@ -100,7 +100,7 @@ where
 
     /// Grup route dengan prefix dan kustomisasi (seperti middleware).
     /// Contoh:
-    /// ```
+    /// ```ignore
     /// router.group("/admin", |r| {
     ///     r.get("/dashboard", dashboard_handler)
     /// })

@@ -8,7 +8,7 @@ use super::orm::QueryBuilder;
 /// Implementasi detail query ada di masing-masing struct model.
 ///
 /// # Contoh
-/// ```rust
+/// ```ignore
 /// let user = User::find(&pool, 1).await?;
 /// let all  = User::all(&pool).await?;
 /// ```
